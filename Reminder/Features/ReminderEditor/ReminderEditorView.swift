@@ -126,19 +126,25 @@ struct ReminderForm: View {
     let isEditing: Bool
     let today: CivilDate
     let calendar: Calendar
+    @FocusState private var amountFocused: Bool
 
     var body: some View {
         Form {
             Section {
                 TextField(draft.kind.titlePlaceholder, text: $draft.title)
-                HStack {
+                // Amount and currency must be separate rows: a Picker makes its whole Form row a tap
+                // target, which would swallow taps meant for the amount field.
+                HStack(spacing: 6) {
+                    Text(Formatting.currencySymbol(draft.currencyCode))
+                        .foregroundStyle(.secondary)
                     TextField("金额（可选）", text: $draft.amountText)
                         .keyboardType(.decimalPad)
-                    Picker("币种", selection: $draft.currencyCode) {
-                        ForEach(ReminderDraft.currencies, id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
+                        .focused($amountFocused)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { amountFocused = true }
+                Picker("币种", selection: $draft.currencyCode) {
+                    ForEach(ReminderDraft.currencies, id: \.self) { Text($0).tag($0) }
                 }
                 if draft.kind == .subscription || draft.kind == .installment {
                     TextField(draft.kind == .installment ? "平台 / 卡片（可选）" : "付款方式（可选）", text: $draft.paymentMethod)
@@ -317,6 +323,13 @@ struct ReminderForm: View {
                         Text(previewDetail(occurrence)).font(.footnote).foregroundStyle(.secondary)
                     }
                 }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") { amountFocused = false }
             }
         }
     }
