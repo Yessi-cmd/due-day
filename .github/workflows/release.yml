@@ -12,12 +12,14 @@ jobs:
   ipa:
     runs-on: macos-15
     timeout-minutes: 40
-    env:
-      KEYCHAIN_PATH: ${{ runner.temp }}/signing.keychain-db
-      ARCHIVE_PATH: ${{ runner.temp }}/Reminder.xcarchive
-      EXPORT_PATH: ${{ runner.temp }}/export
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set paths
+        run: |
+          echo "KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db" >> "$GITHUB_ENV"
+          echo "ARCHIVE_PATH=$RUNNER_TEMP/Reminder.xcarchive" >> "$GITHUB_ENV"
+          echo "EXPORT_PATH=$RUNNER_TEMP/export" >> "$GITHUB_ENV"
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
