@@ -10,6 +10,8 @@ final class AppModel {
     let container: ModelContainer
 
     private init() {
+        // SwiftData's default store lives here; on a fresh install the folder doesn't exist yet.
+        try? FileManager.default.createDirectory(at: .applicationSupportDirectory, withIntermediateDirectories: true)
         do {
             container = try ModelContainer(
                 for: Schema(versionedSchema: SchemaV1.self),
