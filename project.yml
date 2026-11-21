@@ -28,7 +28,7 @@ targets:
     info:
       path: Reminder/Info.plist
       properties:
-        CFBundleDisplayName: 提醒
+        CFBundleDisplayName: 续费日历
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDevelopmentRegion: zh-Hans
