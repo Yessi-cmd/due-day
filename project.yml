@@ -1,0 +1,75 @@
+# XcodeGen project definition — the single source of truth for the Xcode project.
+# Run `xcodegen generate` (CI does this) to produce Reminder.xcodeproj; never commit the .xcodeproj.
+name: Reminder
+
+options:
+  developmentLanguage: zh-Hans
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: M8CDNJ6X6H
+    TARGETED_DEVICE_FAMILY: "1"
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+
+targets:
+  Reminder:
+    type: application
+    platform: iOS
+    sources:
+      - path: Reminder
+    info:
+      path: Reminder/Info.plist
+      properties:
+        CFBundleDisplayName: 提醒
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: zh-Hans
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - arm64
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: Reminder/Reminder.entitlements
+      properties:
+        # Must stay a subset of the provisioning profile's entitlements.
+        com.apple.developer.usernotifications.time-sensitive: true
+    settings:
+      base:
+        PRODUCT_NAME: Reminder
+        # Fixed by the provisioning profile — see AGENTS.md §2.
+        PRODUCT_BUNDLE_IDENTIFIER: app.aurora7963.honey1287
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Manual
+      configs:
+        Release:
+          CODE_SIGN_IDENTITY: iPhone Distribution
+          PROVISIONING_PROFILE_SPECIFIER: 00008140-0006306201E0801CH5PHUT
+    scheme:
+      testTargets:
+        - ReminderTests
+
+  ReminderTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ReminderTests
+    dependencies:
+      - target: Reminder
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.aurora7963.honey1287.tests

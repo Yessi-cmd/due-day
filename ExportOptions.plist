@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>release-testing</string>
+	<key>teamID</key>
+	<string>M8CDNJ6X6H</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>iPhone Distribution</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>app.aurora7963.honey1287</key>
+		<string>00008140-0006306201E0801CH5PHUT</string>
+	</dict>
+	<key>thinning</key>
+	<string>&lt;none&gt;</string>
+	<key>stripSwiftSymbols</key>
+	<true/>
+</dict>
+</plist>
