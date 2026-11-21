@@ -41,6 +41,12 @@ targets:
         UIRequiredDeviceCapabilities:
           - arm64
         ITSAppUsesNonExemptEncryption: false
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - app.aurora7963.honey1287.refresh
+        # Expiry of the signing certificate / provisioning profile (AGENTS.md §2); shown in Settings.
+        DDSigningExpiry: "2027-11-18"
     entitlements:
       path: Reminder/Reminder.entitlements
       properties:
