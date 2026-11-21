@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   ipa:
@@ -51,28 +53,19 @@ jobs:
             if [ -z "${!v}" ]; then echo "::error::Secret $v is not set"; exit 1; fi
           done
 
+          # P12_BASE64 is already re-encoded with 3DES/SHA1 by scripts/set-signing-secrets.sh.
           P12="$RUNNER_TEMP/cert.p12"
-          LEGACY_P12="$RUNNER_TEMP/cert-legacy.p12"
           PROFILE="$RUNNER_TEMP/profile.mobileprovision"
           echo "$P12_BASE64" | base64 --decode > "$P12"
           echo "$PROVISION_PROFILE_BASE64" | base64 --decode > "$PROFILE"
 
-          # The p12 uses OpenSSL 3 defaults (PBES2/AES-256), which `security import`
-          # may reject. Re-encode it with 3DES/SHA1 so the keychain can read it.
-          OPENSSL="$(brew --prefix openssl@3)/bin/openssl"
-          [ -x "$OPENSSL" ] || { brew install openssl@3; OPENSSL="$(brew --prefix openssl@3)/bin/openssl"; }
-          "$OPENSSL" pkcs12 -in "$P12" -passin env:P12_PASSWORD -nodes \
-            | "$OPENSSL" pkcs12 -export -passout env:P12_PASSWORD \
-                -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
-                -out "$LEGACY_P12"
-
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$LEGACY_P12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security import "$P12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
-          rm -f "$P12" "$LEGACY_P12"
+          rm -f "$P12"
 
           echo "Signing identities:"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
@@ -140,9 +133,81 @@ jobs:
         with:
           files: ${{ env.IPA_PATH }}
 
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build OTA install page
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          brew install qrencode
+          SITE="$RUNNER_TEMP/site"
+          rm -rf "$SITE" && mkdir -p "$SITE"
+          BASE="${BASE_URL%/}"
+
+          INFO="$ARCHIVE_PATH/Products/Applications/Reminder.app/Info.plist"
+          plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$INFO"; }
+          VERSION=$(plist CFBundleShortVersionString)
+          BUILD=$(plist CFBundleVersion)
+          BUNDLE_ID=$(plist CFBundleIdentifier)
+          TITLE=$(plist CFBundleDisplayName)
+
+          cp "$IPA_PATH" "$SITE/$IPA_NAME"
+          ICON=Reminder/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+          cp "$ICON" "$SITE/icon.png"
+          sips -z 57 57 "$ICON" --out "$SITE/icon-57.png" > /dev/null
+          sips -z 512 512 "$ICON" --out "$SITE/icon-512.png" > /dev/null
+          qrencode -t SVG -m 1 -o "$SITE/qr.svg" "$BASE/"
+
+          # Versioned manifest name so iOS never picks up a cached copy.
+          MANIFEST="manifest-$BUILD.plist"
+          MANIFEST_URL_ENCODED=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$BASE/$MANIFEST")
+          BUILT_AT=$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')
+
+          fill() {
+            sed -e "s|__IPA_URL__|$BASE/$IPA_NAME|g" \
+                -e "s|__ICON_SMALL_URL__|$BASE/icon-57.png|g" \
+                -e "s|__ICON_LARGE_URL__|$BASE/icon-512.png|g" \
+                -e "s|__MANIFEST_URL_ENCODED__|$MANIFEST_URL_ENCODED|g" \
+                -e "s|__BUNDLE_ID__|$BUNDLE_ID|g" \
+                -e "s|__VERSION__|$VERSION|g" \
+                -e "s|__BUILD__|$BUILD|g" \
+                -e "s|__TITLE__|$TITLE|g" \
+                -e "s|__BUILT_AT__|$BUILT_AT|g" \
+                -e "s|__COMMIT__|${GITHUB_SHA::7}|g" \
+                "$1" > "$2"
+          }
+          fill distribution/manifest.plist "$SITE/$MANIFEST"
+          fill distribution/index.html "$SITE/index.html"
+          plutil -lint "$SITE/$MANIFEST"
+          if grep -n '__[A-Z_]*__' "$SITE/$MANIFEST" "$SITE/index.html"; then
+            echo "::error::Unfilled placeholders in install page"; exit 1
+          fi
+          ls -la "$SITE"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
       - name: Clean up keychain and profiles
         if: always()
         run: |
           security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
           rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/"*.mobileprovision
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision
+
+  deploy:
+    needs: ipa
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy install page to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

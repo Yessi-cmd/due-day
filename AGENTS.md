@@ -94,7 +94,9 @@ ios-app1/
 ├── ExportOptions.plist             # 导出 ipa 用
 ├── .github/workflows/
 │   ├── ci.yml                      # PR / push：编译 + 单元测试
-│   └── release.yml                 # 手动触发 / 打 tag：签名打包 ipa
+│   └── release.yml                 # 手动触发 / 打 tag：签名打包 ipa + 发布 OTA 安装页
+├── distribution/                   # OTA 安装页与 manifest 模板（见 8.4）
+├── scripts/                        # set-signing-secrets.sh、gen-icon.mjs 等工具脚本
 ├── Reminder/                       # App 源码
 │   ├── App/                        # 入口、AppDelegate、依赖装配
 │   ├── Models/                     # SwiftData 模型
@@ -249,20 +251,24 @@ iOS 每个 App **最多同时挂 64 个待发本地通知**，而且 `UNCalendar
 
 ## 8. GitHub Actions
 
-### 8.1 Secrets（在仓库 Settings → Secrets and variables → Actions 中配置）
+### 8.1 Secrets
+
+**不要手工配置**，统一用脚本（本机需已 `gh auth login`，Git Bash 或 macOS 均可）：
+
+```bash
+bash scripts/set-signing-secrets.sh "证书_00008140-0006306201E0801C" Yessi-cmd/due-day
+```
+
+脚本会：把 p12 重新编码为 3DES/SHA1（原文件是 OpenSSL 3 默认的 PBES2/AES-256，macOS `security import` 可能拒绝），并换上随机强密码（原密码只有一个字符，作为 Secret 会导致 Actions 日志里所有同样的字符都被打码）；打印证书与描述文件信息供核对；写入以下 4 个 Secrets：
 
 | Secret | 内容 |
 |---|---|
-| `P12_BASE64` | `证书文件.p12` 的 base64 |
-| `P12_PASSWORD` | `密码.txt` 中 `密码：` 之后的部分（不含前缀） |
-| `PROVISION_PROFILE_BASE64` | `描述文件.mobileprovision` 的 base64 |
-| `KEYCHAIN_PASSWORD` | 任意随机字符串，用于 CI 临时钥匙串 |
+| `P12_BASE64` | 重新编码后的 p12（base64） |
+| `P12_PASSWORD` | 重新编码后 p12 的随机密码 |
+| `PROVISION_PROFILE_BASE64` | 描述文件（base64） |
+| `KEYCHAIN_PASSWORD` | 随机字符串，用于 CI 临时钥匙串 |
 
-在 Windows 上生成 base64（PowerShell）：
-
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("证书_00008140-0006306201E0801C\证书文件.p12")) | Set-Clipboard
-```
+换证书时：把新证书目录放进项目根目录（已被 .gitignore 忽略），重跑脚本；若描述文件名 / Bundle ID / Team ID 变了，脚本会警告，再按第 2 节修改 `project.yml` 与 `ExportOptions.plist`。
 
 ### 8.2 `ci.yml`（每次 push / PR）
 
@@ -276,8 +282,8 @@ iOS 每个 App **最多同时挂 64 个待发本地通知**，而且 `UNCalendar
 步骤：
 
 1. 生成工程（同上）
-2. 把 p12 用 OpenSSL 3 重新编码为 3DES/SHA1（原文件是 OpenSSL 3 默认的 PBES2/AES-256，`security import` 可能拒绝）→ 创建临时钥匙串 → 导入 p12（`security import ... -T /usr/bin/codesign`）→ `security set-key-partition-list` → 设为默认搜索列表
-3. 把描述文件解码到 `~/Library/MobileDevice/Provisioning Profiles/<UUID>.mobileprovision`
+2. 创建临时钥匙串 → 导入 p12（`security import ... -T /usr/bin/codesign`）→ `security set-key-partition-list` → 设为默认搜索列表
+3. 把描述文件解码到 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`（Xcode 16+）和 `~/Library/MobileDevice/Provisioning Profiles/`（旧版），文件名为 `<UUID>.mobileprovision`
 4. `xcodebuild archive`，**手动签名**：
    - `CODE_SIGN_STYLE=Manual`
    - `DEVELOPMENT_TEAM=M8CDNJ6X6H`
@@ -289,15 +295,26 @@ iOS 每个 App **最多同时挂 64 个待发本地通知**，而且 `UNCalendar
    - `signingStyle: manual`，`provisioningProfiles` 映射 Bundle ID → 描述文件名
    - `teamID: M8CDNJ6X6H`
 6. 上传 `.ipa` 为 workflow artifact；若是 tag 触发，同时创建 GitHub Release 并附上 ipa
-7. `if: always()` 步骤中删除临时钥匙串和描述文件
+7. 生成 OTA 安装页（见 8.4），用 `upload-pages-artifact` 上传；独立的 `deploy` job 用 `deploy-pages` 发布到 GitHub Pages
+8. `if: always()` 步骤中删除临时钥匙串和描述文件
 
 版本号：`MARKETING_VERSION` 取自 tag（如 `v1.2.0` → `1.2.0`），`CURRENT_PROJECT_VERSION` 取 `github.run_number`。
 
 Entitlements 文件只声明本项目真正用到的能力（`aps-environment` 用不到就不要声明；Time Sensitive 需要 `com.apple.developer.usernotifications.time-sensitive = true`）。**声明的能力必须是描述文件能力的子集**，否则签名失败。
 
-### 8.4 安装到手机
+### 8.4 安装到手机（OTA）
 
-产物是 Ad-hoc 签名的 ipa，只能装到 UDID 为 `00008140-0006306201E0801C` 的设备上。Windows 下可用爱思助手等工具安装，或自行搭建 `itms-services` OTA 安装页（需要 HTTPS）。如果证书被吊销，App 会闪退——这就是第 6、9 节强调备份的原因。
+产物是 Ad-hoc 签名的 ipa，只能装到 UDID 为 `00008140-0006306201E0801C` 的设备上。
+
+**安装方式：iPhone 用 Safari 打开 https://yessi-cmd.github.io/due-day/ ，点「安装」。** 电脑打开该页会显示二维码，用手机相机扫码即可。
+
+实现：
+- 模板在 `distribution/`：`index.html`（安装页）与 `manifest.plist`（`itms-services` 清单），占位符 `__XXX__` 由 `release.yml` 用实际版本、构建号、URL 填充；填充后若仍有占位符则构建失败。
+- 站点内容：`index.html`、`manifest-<构建号>.plist`（带构建号避免 iOS 缓存）、ipa、图标（`sips` 缩放出 57/512）、`qr.svg`（`qrencode` 生成）。
+- 每次 Release 都会覆盖整个站点，只保留最新版本；历史版本见 Actions artifacts 或 GitHub Releases。
+- Pages 已设为「GitHub Actions」部署；`github-pages` 环境允许 `main` 分支和 `v*` tag 部署。
+
+如果证书被吊销，App 会闪退——这就是第 6、9 节强调备份的原因。
 
 > 费用提示：public 仓库 macOS runner 免费；private 仓库的 macOS 分钟数按 10 倍计费。仓库设为 public 也没问题，前提是证书**只在 Secrets 里**。
 
