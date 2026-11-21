@@ -87,6 +87,10 @@ struct ReminderDraft {
     var note = ""
     var colorIndex: Int
     var symbolName: String
+    var alarmEnabled: Bool
+    var nagEnabled: Bool
+    var nagIntervalMinutes: Int
+    var nagCount: Int
 
     static let currencies = ["CNY", "USD", "HKD", "EUR", "JPY", "GBP"]
 
@@ -102,6 +106,10 @@ struct ReminderDraft {
         self.contractEnd = today.adding(days: 365)
         self.colorIndex = kind.defaultColorIndex
         self.symbolName = kind.defaultSymbol
+        self.alarmEnabled = AppSettings.defaultAlarm
+        self.nagEnabled = AppSettings.defaultNag
+        self.nagIntervalMinutes = AppSettings.defaultNagInterval
+        self.nagCount = AppSettings.defaultNagCount
     }
 
     init(item: ReminderItem, today: CivilDate) {
@@ -133,6 +141,10 @@ struct ReminderDraft {
         note = item.note
         colorIndex = item.colorIndex
         symbolName = item.symbolName
+        alarmEnabled = item.alarmEnabled
+        nagEnabled = item.nagEnabled
+        nagIntervalMinutes = item.nagIntervalMinutes
+        nagCount = item.nagCount
     }
 
     var frequency: RecurrenceRule.Frequency { preset.fixed?.0 ?? customFrequency }
@@ -193,6 +205,10 @@ struct ReminderDraft {
         item.note = note
         item.colorIndex = colorIndex
         item.symbolName = symbolName
+        item.alarmEnabled = alarmEnabled
+        item.nagEnabled = nagEnabled
+        item.nagIntervalMinutes = nagIntervalMinutes
+        item.nagCount = nagCount
         item.updatedAt = .now
     }
 }

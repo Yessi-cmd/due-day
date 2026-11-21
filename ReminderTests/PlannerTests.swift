@@ -91,6 +91,56 @@ struct PlannerTests {
         #expect(NotificationPlanner.plan(reminders: many, now: now, calendar: calendar, timeSensitive: false).count == NotificationPlanner.defaultLimit)
     }
 
+    @Test("Due-day nags repeat until midnight and stop once paid")
+    func nags() {
+        let calendar = Self.shanghai
+        let now = CivilDate(2025, 7, 15).date(in: calendar, hour: 8)!
+        var rent = snapshot(start: CivilDate(2025, 7, 15), created: CivilDate(2025, 7, 1), advance: [0])
+        rent.nagEnabled = true
+        rent.nagIntervalMinutes = 30
+        rent.nagCount = 4
+        let todays = NotificationPlanner.plan(reminders: [rent], now: now, calendar: calendar, timeSensitive: true)
+            .filter { $0.fireDay == CivilDate(2025, 7, 15) }
+        #expect(todays.map { $0.hour * 60 + $0.minute } == [540, 570, 600, 630, 660])
+        #expect(todays.dropFirst().allSatisfy { $0.body.hasPrefix("还没标记已付") && $0.timeSensitive })
+
+        // Late reminder time: nags never spill past midnight.
+        let late = ReminderSnapshot(
+            id: rent.id, kind: .rent, title: "测试", amount: nil, currencyCode: "CNY", startDate: rent.startDate,
+            rule: rent.rule, reminderHour: 23, reminderMinute: 0, advanceDays: [0], createdDay: rent.createdDay,
+            prepaidPeriods: 0, autoRenew: true, isCancelled: false, isArchived: false, trialEnd: nil, contractEnd: nil,
+            paidDates: [], alarmEnabled: false, nagEnabled: true, nagIntervalMinutes: 30, nagCount: 4
+        )
+        let lateNags = NotificationPlanner.nagNotifications(
+            for: late, occurrence: Occurrence(index: 0, date: CivilDate(2025, 7, 15)), now: now, calendar: calendar, timeSensitive: false)
+        #expect(lateNags.count == 1)
+
+        let paid = ReminderSnapshot(
+            id: rent.id, kind: .rent, title: "测试", amount: nil, currencyCode: "CNY", startDate: rent.startDate,
+            rule: rent.rule, reminderHour: 9, reminderMinute: 0, advanceDays: [0], createdDay: rent.createdDay,
+            prepaidPeriods: 0, autoRenew: true, isCancelled: false, isArchived: false, trialEnd: nil, contractEnd: nil,
+            paidDates: [CivilDate(2025, 7, 15)], alarmEnabled: false, nagEnabled: true, nagIntervalMinutes: 30, nagCount: 4
+        )
+        #expect(!NotificationPlanner.plan(reminders: [paid], now: now, calendar: calendar, timeSensitive: true)
+            .contains { $0.occurrence == CivilDate(2025, 7, 15) })
+    }
+
+    @Test("Alarms only for enabled, unsettled due days")
+    func alarms() {
+        let calendar = Self.shanghai
+        let now = CivilDate(2025, 7, 1).date(in: calendar, hour: 12)!
+        var sub = snapshot(kind: .subscription, start: CivilDate(2025, 7, 10), created: CivilDate(2025, 7, 1),
+                           paid: [CivilDate(2025, 8, 10)])
+        sub.alarmEnabled = true
+        let alarms = AlarmPlanner.plan(reminders: [sub], now: now, calendar: calendar)
+        #expect(alarms.map(\.occurrence) == [CivilDate(2025, 7, 10)])
+        #expect(alarms.first?.fireDate == CivilDate(2025, 7, 10).date(in: calendar, hour: 9))
+        #expect(alarms.first?.title == "测试 · 今天到期 · ¥2,500.00")
+
+        sub.alarmEnabled = false
+        #expect(AlarmPlanner.plan(reminders: [sub], now: now, calendar: calendar).isEmpty)
+    }
+
     @Test("Notification bodies")
     func bodies() {
         let rent = snapshot(start: CivilDate(2025, 7, 15), created: CivilDate(2025, 7, 1))

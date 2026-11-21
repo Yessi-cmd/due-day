@@ -75,7 +75,14 @@ struct ReminderEditorView: View {
         }
         draft.apply(to: item)
         ReminderActions.save(context)
-        Task { await NotificationScheduler.requestAuthorizationIfNeeded() }
+        let wantsAlarm = draft.alarmEnabled
+        Task {
+            await NotificationScheduler.requestAuthorizationIfNeeded()
+            if wantsAlarm && AlarmSupport.permission() == .notDetermined {
+                _ = await AlarmSupport.requestPermission()
+                NotificationScheduler.setNeedsReschedule()
+            }
+        }
         dismiss()
     }
 }
@@ -215,6 +222,26 @@ struct ReminderForm: View {
                 }
             }
 
+            Section {
+                Toggle(isOn: $draft.alarmEnabled) {
+                    Label("到期当天闹钟响铃", systemImage: "alarm")
+                }
+                .disabled(!AlarmSupport.isAvailable)
+                Toggle(isOn: $draft.nagEnabled.animation()) {
+                    Label("没处理就重复提醒", systemImage: "bell.badge")
+                }
+                if draft.nagEnabled {
+                    Picker("间隔", selection: $draft.nagIntervalMinutes) {
+                        ForEach(AppSettings.nagIntervalOptions, id: \.self) { Text(Formatting.minutes($0)).tag($0) }
+                    }
+                    Stepper("最多再提醒 \(draft.nagCount) 次", value: $draft.nagCount, in: 1...12)
+                }
+            } header: {
+                Text("强提醒")
+            } footer: {
+                Text(strongReminderFooter)
+            }
+
             if draft.kind == .subscription {
                 Section {
                     Toggle("自动续费", isOn: $draft.autoRenew)
@@ -292,6 +319,20 @@ struct ReminderForm: View {
                 }
             }
         }
+    }
+
+    private var strongReminderFooter: String {
+        let time = Formatting.time(hour: draft.hour, minute: draft.minute)
+        var lines: [String] = []
+        if !AlarmSupport.isAvailable {
+            lines.append("闹钟响铃需要 iOS 26。")
+        } else if draft.alarmEnabled {
+            lines.append("到期当天 \(time) 像闹钟一样整屏响铃，静音和专注模式下也会响。")
+        }
+        if draft.nagEnabled {
+            lines.append("之后每 \(Formatting.minutes(draft.nagIntervalMinutes))再通知一次，最多 \(draft.nagCount) 次；标记\(draft.kind.settleVerb)后立即停止。")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private var unitName: String {

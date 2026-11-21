@@ -36,6 +36,10 @@ struct BackupFile: Codable, Sendable {
         var contractEnd: CivilDate?
         var createdAt: Date?
         var updatedAt: Date?
+        var alarmEnabled: Bool?
+        var nagEnabled: Bool?
+        var nagIntervalMinutes: Int?
+        var nagCount: Int?
         var payments: [PaymentDTO]?
     }
 
@@ -116,6 +120,8 @@ enum BackupService {
             prepaidPeriods: item.prepaidPeriods, paymentMethod: item.paymentMethod, payee: item.payee,
             trialEnd: item.trialEnd, contractEnd: item.contractEnd,
             createdAt: item.createdAt, updatedAt: item.updatedAt,
+            alarmEnabled: item.alarmEnabled, nagEnabled: item.nagEnabled,
+            nagIntervalMinutes: item.nagIntervalMinutes, nagCount: item.nagCount,
             payments: (item.payments ?? []).compactMap { record in
                 record.occurrence.map {
                     BackupFile.PaymentDTO(id: record.id, occurrence: $0, paidAt: record.paidAt, amount: record.amountRaw)
@@ -148,6 +154,10 @@ enum BackupService {
         item.contractEnd = dto.contractEnd
         item.createdAt = dto.createdAt ?? .now
         item.updatedAt = dto.updatedAt ?? .now
+        item.alarmEnabled = dto.alarmEnabled ?? true
+        item.nagEnabled = dto.nagEnabled ?? true
+        item.nagIntervalMinutes = dto.nagIntervalMinutes ?? 30
+        item.nagCount = dto.nagCount ?? 4
         for payment in dto.payments ?? [] {
             let record = PaymentRecord(occurrence: payment.occurrence, paidAt: payment.paidAt ?? .now, amount: nil)
             record.amountRaw = payment.amount

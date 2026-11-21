@@ -40,6 +40,9 @@ enum NotificationPlanner {
             let occurrences = reminder.unsettledOccurrences(today: today.adding(days: -1), through: horizon.adding(days: maxOffset))
 
             for occurrence in occurrences {
+                if reminder.nagEnabled {
+                    result += nagNotifications(for: reminder, occurrence: occurrence, now: now, calendar: calendar, timeSensitive: timeSensitive)
+                }
                 for offset in offsets {
                     let fireDay = occurrence.date.adding(days: -offset)
                     guard fireDay <= horizon,
@@ -77,6 +80,31 @@ enum NotificationPlanner {
         }
         if let amount = reminder.amount { parts.append(Formatting.money(amount, currency: reminder.currencyCode)) }
         return parts.joined(separator: " · ")
+    }
+
+    /// Follow-ups on the due day every `nagIntervalMinutes` after the reminder time, until settled
+    /// (marking it paid reschedules and drops the rest). They stop at midnight.
+    static func nagNotifications(
+        for reminder: ReminderSnapshot, occurrence: Occurrence, now: Date, calendar: Calendar, timeSensitive: Bool
+    ) -> [PlannedNotification] {
+        let interval = max(5, reminder.nagIntervalMinutes)
+        let base = reminder.reminderHour * 60 + reminder.reminderMinute
+        let prefix = reminder.kind == .custom ? "还没完成" : "还没标记已付"
+        return (1...max(1, reminder.nagCount)).compactMap { k in
+            let minutes = base + k * interval
+            guard minutes < 24 * 60,
+                  let fireDate = occurrence.date.date(in: calendar, hour: minutes / 60, minute: minutes % 60),
+                  fireDate > now else { return nil }
+            return PlannedNotification(
+                identifier: "\(reminder.id.uuidString).\(occurrence.date).nag\(k)",
+                reminderID: reminder.id, occurrence: occurrence.date, fireDay: occurrence.date,
+                hour: minutes / 60, minute: minutes % 60, fireDate: fireDate,
+                title: reminder.title,
+                body: "\(prefix)（第 \(k + 1) 次提醒）· " + body(for: reminder, occurrence: occurrence, offset: 0),
+                timeSensitive: timeSensitive,
+                settleable: true, settleVerb: reminder.kind.settleVerb
+            )
+        }
     }
 
     /// Free-trial end (subscriptions) and lease end (rent) get their own heads-up.

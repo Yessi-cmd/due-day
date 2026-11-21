@@ -83,6 +83,8 @@ enum NotificationScheduler {
         let today = CivilDate(now, in: calendar)
         let badge = snapshots.filter(\.isActive).filter { ($0.status(today: today).daysUntilDue ?? 1) <= 0 }.count
         center.setBadgeCount(badge, withCompletionHandler: nil)
+
+        await AlarmSupport.sync(AlarmPlanner.plan(reminders: snapshots, now: now, calendar: calendar))
         scheduleAppRefresh()
     }
 

@@ -14,7 +14,7 @@ final class AppModel {
         try? FileManager.default.createDirectory(at: .applicationSupportDirectory, withIntermediateDirectories: true)
         do {
             container = try ModelContainer(
-                for: Schema(versionedSchema: SchemaV1.self),
+                for: Schema(versionedSchema: CurrentSchema.self),
                 migrationPlan: ReminderMigrationPlan.self
             )
         } catch {

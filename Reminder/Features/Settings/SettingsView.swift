@@ -16,8 +16,13 @@ struct SettingsView: View {
     @AppStorage(AppSettings.defaultAdvanceKey) private var defaultAdvance = 3
     @AppStorage(AppSettings.timeSensitiveKey) private var timeSensitive = true
     @AppStorage(AppSettings.weekStartsOnMondayKey) private var weekStartsOnMonday = true
+    @AppStorage(AppSettings.defaultAlarmKey) private var defaultAlarm = true
+    @AppStorage(AppSettings.defaultNagKey) private var defaultNag = true
+    @AppStorage(AppSettings.defaultNagIntervalKey) private var defaultNagInterval = 30
+    @AppStorage(AppSettings.defaultNagCountKey) private var defaultNagCount = 4
 
     @State private var authorization: UNAuthorizationStatus = .notDetermined
+    @State private var alarmPermission: AlarmSupport.Permission = .unavailable
     @State private var pendingCount = 0
     @State private var exportDocument: BackupDocument?
     @State private var showExporter = false
@@ -48,6 +53,36 @@ struct SettingsView: View {
                     Text("通知")
                 } footer: {
                     Text("系统最多为每个 App 保留 64 条待发通知，App 会自动滚动安排最近的提醒。")
+                }
+
+                Section {
+                    LabeledContent("闹钟权限", value: alarmPermissionText)
+                    if alarmPermission == .notDetermined {
+                        Button("允许闹钟响铃") {
+                            Task {
+                                _ = await AlarmSupport.requestPermission()
+                                await refreshStatus()
+                                NotificationScheduler.setNeedsReschedule()
+                            }
+                        }
+                    } else if alarmPermission == .denied {
+                        Button("去系统设置开启闹钟") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                        }
+                    }
+                    Toggle("新提醒默认开启闹钟", isOn: $defaultAlarm)
+                        .disabled(alarmPermission == .unavailable)
+                    Toggle("新提醒默认开启重复提醒", isOn: $defaultNag)
+                    if defaultNag {
+                        Picker("重复间隔", selection: $defaultNagInterval) {
+                            ForEach(AppSettings.nagIntervalOptions, id: \.self) { Text(Formatting.minutes($0)).tag($0) }
+                        }
+                        Stepper("最多再提醒 \(defaultNagCount) 次", value: $defaultNagCount, in: 1...12)
+                    }
+                } header: {
+                    Text("强提醒")
+                } footer: {
+                    Text("闹钟在到期当天的提醒时间整屏响铃，静音和专注模式下也会响（iOS 26 起）。重复提醒会在当天持续通知，直到你标记已付。每个提醒也可以单独设置。")
                 }
 
                 Section("新建提醒的默认值") {
@@ -127,6 +162,15 @@ struct SettingsView: View {
         }
     }
 
+    private var alarmPermissionText: String {
+        switch alarmPermission {
+        case .unavailable: "需要 iOS 26"
+        case .notDetermined: "未设置"
+        case .denied: "已关闭"
+        case .authorized: "已开启"
+        }
+    }
+
     private var defaultTime: Binding<Date> {
         Binding(
             get: { clock.today.date(in: clock.calendar, hour: defaultHour, minute: defaultMinute) ?? .now },
@@ -140,6 +184,7 @@ struct SettingsView: View {
 
     private func refreshStatus() async {
         authorization = await NotificationScheduler.authorizationStatus()
+        alarmPermission = AlarmSupport.permission()
         pendingCount = await NotificationScheduler.pendingIdentifiers().count
     }
 

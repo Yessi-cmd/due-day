@@ -40,6 +40,7 @@ struct ReminderDetailView: View {
                 LabeledContent("类型", value: snapshot.kind.title)
                 LabeledContent("重复", value: snapshot.rule.summary(start: snapshot.startDate))
                 LabeledContent("提醒", value: reminderSummary)
+                LabeledContent("强提醒", value: strongSummary)
                 if !item.paymentMethod.isEmpty { LabeledContent(snapshot.kind == .installment ? "平台" : "付款方式", value: item.paymentMethod) }
                 if !item.payee.isEmpty { LabeledContent("收款方", value: item.payee) }
                 if snapshot.kind == .subscription { LabeledContent("自动续费", value: item.autoRenew ? "是" : "否") }
@@ -195,6 +196,13 @@ struct ReminderDetailView: View {
     private var reminderSummary: String {
         let days = item.advanceDays.sorted(by: >).map(Formatting.advance).joined(separator: "、")
         return "\(days.isEmpty ? "当天" : days) \(Formatting.time(hour: item.reminderHour, minute: item.reminderMinute))"
+    }
+
+    private var strongSummary: String {
+        var parts: [String] = []
+        if item.alarmEnabled && AlarmSupport.isAvailable { parts.append("闹钟") }
+        if item.nagEnabled { parts.append("每 \(Formatting.minutes(item.nagIntervalMinutes))重复 \(item.nagCount) 次") }
+        return parts.isEmpty ? "关闭" : parts.joined(separator: " + ")
     }
 
     private func delete() {

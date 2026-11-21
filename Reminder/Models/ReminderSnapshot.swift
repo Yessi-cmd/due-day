@@ -20,6 +20,10 @@ struct ReminderSnapshot: Hashable, Sendable, Identifiable {
     let trialEnd: CivilDate?
     let contractEnd: CivilDate?
     let paidDates: Set<CivilDate>
+    var alarmEnabled = false
+    var nagEnabled = false
+    var nagIntervalMinutes = 30
+    var nagCount = 4
 
     var isActive: Bool { !isArchived && !(kind == .subscription && isCancelled) }
 

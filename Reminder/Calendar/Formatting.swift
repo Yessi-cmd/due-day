@@ -43,6 +43,12 @@ enum Formatting {
         }
     }
 
+    /// "30 分钟" / "1 小时" / "1.5 小时"
+    static func minutes(_ minutes: Int) -> String {
+        guard minutes >= 60 else { return "\(minutes) 分钟" }
+        return minutes % 60 == 0 ? "\(minutes / 60) 小时" : String(format: "%.1f 小时", Double(minutes) / 60)
+    }
+
     static func advance(_ days: Int) -> String {
         days == 0 ? "当天" : "提前 \(days) 天"
     }

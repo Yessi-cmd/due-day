@@ -1,10 +1,62 @@
 import Foundation
 import SwiftData
 
-/// Schema v1. Every model change needs a new VersionedSchema plus a migration stage
-/// (AGENTS.md §10) — never edit these classes in a way that drops existing data.
+// Every model change needs a new VersionedSchema plus a migration stage (AGENTS.md §10).
+// Old schema versions are frozen copies — never edit them.
+
 enum SchemaV1: VersionedSchema {
     static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
+
+    static var models: [any PersistentModel.Type] {
+        [ReminderItem.self, PaymentRecord.self]
+    }
+
+    @Model
+    final class ReminderItem {
+        @Attribute(.unique) var id: UUID = UUID()
+        var kindRaw: String = ReminderKind.custom.rawValue
+        var title: String = ""
+        var amountRaw: String?
+        var currencyCode: String = "CNY"
+        var startDateRaw: String = "2000-01-01"
+        var ruleData: Data = Data()
+        var reminderHour: Int = 9
+        var reminderMinute: Int = 0
+        var advanceDays: [Int] = [3, 0]
+        var colorIndex: Int = 0
+        var symbolName: String = "bell"
+        var note: String = ""
+        var autoRenew: Bool = true
+        var isCancelled: Bool = false
+        var isArchived: Bool = false
+        var prepaidPeriods: Int = 0
+        var paymentMethod: String = ""
+        var payee: String = ""
+        var trialEndRaw: String?
+        var contractEndRaw: String?
+        var createdAt: Date = Date()
+        var updatedAt: Date = Date()
+        @Relationship(deleteRule: .cascade, inverse: \PaymentRecord.reminder)
+        var payments: [PaymentRecord]? = []
+
+        init() {}
+    }
+
+    @Model
+    final class PaymentRecord {
+        var id: UUID = UUID()
+        var occurrenceRaw: String = ""
+        var paidAt: Date = Date()
+        var amountRaw: String?
+        var reminder: ReminderItem?
+
+        init() {}
+    }
+}
+
+/// v2: strong reminders — alarm on the due day and repeated notifications until settled.
+enum SchemaV2: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(2, 0, 0) }
 
     static var models: [any PersistentModel.Type] {
         [ReminderItem.self, PaymentRecord.self]
@@ -39,6 +91,12 @@ enum SchemaV1: VersionedSchema {
         var contractEndRaw: String?
         var createdAt: Date = Date()
         var updatedAt: Date = Date()
+        /// Ring an AlarmKit alarm at the reminder time on the due day (iOS 26+).
+        var alarmEnabled: Bool = true
+        /// Keep re-notifying on the due day until the occurrence is settled.
+        var nagEnabled: Bool = true
+        var nagIntervalMinutes: Int = 30
+        var nagCount: Int = 4
         @Relationship(deleteRule: .cascade, inverse: \PaymentRecord.reminder)
         var payments: [PaymentRecord]? = []
 
@@ -69,16 +127,20 @@ enum SchemaV1: VersionedSchema {
 }
 
 enum ReminderMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [SchemaV1.self] }
-    static var stages: [MigrationStage] { [] }
+    static var schemas: [any VersionedSchema.Type] { [SchemaV1.self, SchemaV2.self] }
+    static var stages: [MigrationStage] {
+        // New attributes all have defaults, so existing reminders get strong reminders switched on.
+        [.lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self)]
+    }
 }
 
-typealias ReminderItem = SchemaV1.ReminderItem
-typealias PaymentRecord = SchemaV1.PaymentRecord
+typealias CurrentSchema = SchemaV2
+typealias ReminderItem = SchemaV2.ReminderItem
+typealias PaymentRecord = SchemaV2.PaymentRecord
 
 // MARK: - Typed accessors
 
-extension SchemaV1.ReminderItem {
+extension SchemaV2.ReminderItem {
     var kind: ReminderKind {
         get { ReminderKind(rawValue: kindRaw) ?? .custom }
         set { kindRaw = newValue.rawValue }
@@ -126,12 +188,14 @@ extension SchemaV1.ReminderItem {
             prepaidPeriods: prepaidPeriods, autoRenew: autoRenew,
             isCancelled: isCancelled, isArchived: isArchived,
             trialEnd: trialEnd, contractEnd: contractEnd,
-            paidDates: Set((payments ?? []).compactMap { CivilDate(string: $0.occurrenceRaw) })
+            paidDates: Set((payments ?? []).compactMap { CivilDate(string: $0.occurrenceRaw) }),
+            alarmEnabled: alarmEnabled, nagEnabled: nagEnabled,
+            nagIntervalMinutes: nagIntervalMinutes, nagCount: nagCount
         )
     }
 }
 
-extension SchemaV1.PaymentRecord {
+extension SchemaV2.PaymentRecord {
     var occurrence: CivilDate? { CivilDate(string: occurrenceRaw) }
 
     var amount: Decimal? {

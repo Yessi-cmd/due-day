@@ -228,6 +228,10 @@ Foundation **不提供**节气。实现方式：
 - 每个提醒项可设置**多个提前量**：当天、提前 1/2/3/5/7/15/30 天，或自定义 N 天；默认"提前 3 天 + 当天"
 - 提醒时刻（时:分），默认 09:00，全局可改默认值
 - 当天提醒默认用 **Time Sensitive** 中断级别（描述文件已授权 `time-sensitive`），提前提醒用普通级别；可在设置中关闭
+- **强提醒**（每个提醒单独开关，新建时的默认值在设置里）：
+  - **闹钟**：到期当天的提醒时间用 **AlarmKit**（iOS 26+）整屏响铃，穿透静音和专注模式。无需额外 entitlement，只需 Info.plist 的 `NSAlarmKitUsageDescription` 和用户授权。所有 AlarmKit 调用只经过 `Scheduling/AlarmSupport.swift`（`#if canImport` + `#available` 包裹，非 MainActor）；规划逻辑在纯函数 `AlarmPlanner` 中。API 以 CI 上 Xcode SDK 的 `AlarmKit.swiftinterface` 为准：iOS 26.1 起 `Alert(title:)` 不再需要 stopButton。
+  - **重复通知**：到期当天提醒时间后每 N 分钟再发一条（默认 30 分钟 × 4 次，不跨过午夜），标记已付后重排即全部撤销。
+  - 「关键警告」(critical alerts) 需要苹果单独审批的 entitlement，描述文件没有，**不要使用**。
 
 ### 6.4 支付记录
 
@@ -248,6 +252,7 @@ iOS 每个 App **最多同时挂 64 个待发本地通知**，而且 `UNCalendar
 4. 触发重排的时机：App 启动、回到前台、任何提醒项增删改、标记已付、时区/日期显著变化、`BGAppRefreshTask` 执行时（每天至少申请一次）。
 5. 通知权限被拒时，首页顶部显示一条可点击的提示条引导去设置，不弹窗打扰。
 6. 设置页提供"查看已排队通知"的调试列表（显示条数和最近 10 条），方便排查。
+7. 每次重排时同步 AlarmKit：取消本 App 全部闹钟，再按 `AlarmPlanner` 重新安排最近 45 天内、最多 20 个到期日闹钟。
 
 ---
 
@@ -364,7 +369,7 @@ Entitlements 文件只声明本项目真正用到的能力（`aps-environment` �
 
 ## 10. 数据与备份
 
-- SwiftData 模型需带 `schemaVersion`，用 `VersionedSchema` + `SchemaMigrationPlan` 管理迁移；**任何模型改动都必须附带迁移**，不得导致老数据丢失。
+- SwiftData 模型需带 `schemaVersion`，用 `VersionedSchema` + `SchemaMigrationPlan` 管理迁移；**任何模型改动都必须附带迁移**，不得导致老数据丢失。旧版本 schema 是冻结副本，永远不改；`CurrentSchema` 与 `ReminderItem`/`PaymentRecord` typealias 指向最新版本。历史：V1 初版 → V2 增加闹钟/重复提醒字段（lightweight 迁移）。
 - 导出格式：带版本号的 JSON（`{ "version": 1, "exportedAt": ..., "reminders": [...], "payments": [...] }`），日期用 ISO 8601，金额用字符串表示的十进制数。
 - 导入需容错：未知字段忽略，缺失字段用默认值，版本过高时提示而不是崩溃。
 - 导出/导入要有往返测试（导出 → 导入 → 数据完全一致）。

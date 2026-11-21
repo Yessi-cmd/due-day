@@ -41,6 +41,7 @@ targets:
         UIRequiredDeviceCapabilities:
           - arm64
         ITSAppUsesNonExemptEncryption: false
+        NSAlarmKitUsageDescription: 到期当天像闹钟一样响铃，提醒你续费、还款和交房租。
         UIBackgroundModes:
           - fetch
         BGTaskSchedulerPermittedIdentifiers:
