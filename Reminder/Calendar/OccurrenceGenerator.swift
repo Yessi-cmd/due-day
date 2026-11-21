@@ -22,7 +22,7 @@ struct OccurrenceSequence: Sequence, IteratorProtocol {
     init(rule: RecurrenceRule, start: CivilDate, startIndex: Int = 0) {
         self.rule = rule
         self.start = start
-        self.index = max(0, startIndex)
+        self.index = Swift.max(0, startIndex)
         self.lunarAnchor = rule.calendar == .lunar ? LunarCalendar.lunarDate(for: start) : nil
     }
 
@@ -36,7 +36,7 @@ struct OccurrenceSequence: Sequence, IteratorProtocol {
     }
 
     private mutating func date(at n: Int) -> CivilDate? {
-        let step = max(1, rule.interval)
+        let step = Swift.max(1, rule.interval)
         switch rule.frequency {
         case .none:
             return start
@@ -48,11 +48,11 @@ struct OccurrenceSequence: Sequence, IteratorProtocol {
             if let anchor = lunarAnchor { return lunarMonthly(anchor: anchor, offset: n * step) }
             let (y, m) = start.monthShifted(by: n * step)
             let length = CivilDate.daysInMonth(year: y, month: m)
-            return CivilDate(y, m, rule.monthlyMode == .lastDay ? length : min(start.day, length))
+            return CivilDate(y, m, rule.monthlyMode == .lastDay ? length : Swift.min(start.day, length))
         case .yearly:
             if let anchor = lunarAnchor { return lunarYearly(anchor: anchor, year: anchor.lunarYear + n * step) }
             let y = start.year + n * step
-            return CivilDate(y, start.month, min(start.day, CivilDate.daysInMonth(year: y, month: start.month)))
+            return CivilDate(y, start.month, Swift.min(start.day, CivilDate.daysInMonth(year: y, month: start.month)))
         }
     }
 
@@ -118,7 +118,7 @@ enum OccurrenceGenerator {
     private static func skipEstimate(rule: RecurrenceRule, start: CivilDate, lower: CivilDate) -> Int {
         let days = start.days(until: lower)
         guard days > 0 else { return 0 }
-        let step = max(1, rule.interval)
+        let step = Swift.max(1, rule.interval)
         switch rule.frequency {
         case .none: return 0
         case .daily: return days / step - 1
